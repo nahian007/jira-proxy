@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch");
+const cron = require("node-cron");
 
 const app = express();
 app.use(cors({
@@ -114,3 +115,70 @@ app.post("/send-report", async (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`✅ Jira proxy running at http://localhost:${PORT}`));
+
+// Cron job — Every Sun, Mon, Tue, Wed, Thu at 10:00 AM Bangladesh time (UTC+6 = 04:00 UTC)
+cron.schedule("0 4 * * 0,1,2,3,4", async () => {
+  console.log("⏰ Running scheduled Jira report...");
+  try {
+    const data = await fetchJiraTickets(
+      "shopup.atlassian.net",
+      "nahian@shopup.org",
+      process.env.JIRA_TOKEN,
+      "SARY"
+    );
+    const issues = data.issues || [];
+
+    let sprintName = "Active Sprint";
+    for (const issue of issues) {
+      const sf = issue.fields?.customfield_10020;
+      if (Array.isArray(sf)) {
+        const active = sf.find(s => s.state === "active");
+        if (active) { sprintName = active.name; break; }
+      }
+    }
+
+    const priorityIcon = { Highest: "🔴", High: "🟠", Medium: "🟡", Low: "🟢", Lowest: "🔵" };
+    const typeIcon = { Bug: "🐛", Task: "✅", Story: "📖", Epic: "⚡", "Sub-Bug": "🐞" };
+
+    let message = `*📋 Jira Sprint Report — ${sprintName}*\n`;
+    message += `*Project:* SARY  |  *Open Tickets:* ${issues.length}\n`;
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    const groups = { Highest: [], High: [], Medium: [], Low: [], Lowest: [] };
+    for (const issue of issues) {
+      const p = issue.fields.priority?.name || "Medium";
+      if (!groups[p]) groups[p] = [];
+      groups[p].push(issue);
+    }
+
+    for (const priority of ["Highest", "High", "Medium", "Low", "Lowest"]) {
+      const group = groups[priority];
+      if (!group || group.length === 0) continue;
+      message += `${priorityIcon[priority]} *${priority} Priority*\n`;
+      for (const issue of group) {
+        const key = issue.key;
+        const summary = issue.fields.summary;
+        const assignee = issue.fields.assignee?.displayName || "Unassigned";
+        const status = issue.fields.status?.name || "Unknown";
+        const type = issue.fields.issuetype?.name || "Task";
+        message += `  ${typeIcon[type] || "📌"} *${key}* — ${summary}\n`;
+        message += `      👤 ${assignee}  |  📌 ${status}\n`;
+      }
+      message += `\n`;
+    }
+
+    message += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    message += `_Report generated on ${new Date().toLocaleString("en-US", { timeZone: "Asia/Dhaka" })} (BST)_`;
+
+    const chatRes = await fetch(GOOGLE_CHAT_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: message }),
+    });
+
+    if (chatRes.ok) console.log("✅ Report sent to Google Chat!");
+    else console.error("❌ Failed to send report:", await chatRes.text());
+  } catch (err) {
+    console.error("❌ Scheduled report error:", err.message);
+  }
+}, { timezone: "UTC" });
