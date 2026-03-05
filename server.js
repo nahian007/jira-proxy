@@ -3,7 +3,7 @@ const cors = require("cors");
 const fetch = require("node-fetch");
 
 const app = express();
-app.use(cors());
+app.use(cors()); // Allow requests from Claude artifacts
 app.use(express.json());
 
 app.get("/jira", async (req, res) => {
@@ -31,5 +31,5 @@ app.get("/jira", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = 3001;
 app.listen(PORT, () => console.log(`✅ Jira proxy running at http://localhost:${PORT}`));
