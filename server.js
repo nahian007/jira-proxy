@@ -14,7 +14,7 @@ app.get("/jira", async (req, res) => {
   }
 
   const jql = `project = "${projectKey}" AND sprint in openSprints() AND statusCategory != Done ORDER BY priority ASC`;
-  const url = `https://${domain}/rest/api/3/search?jql=${encodeURIComponent(jql)}&fields=summary,status,priority,assignee,issuetype,customfield_10020&maxResults=100`;
+  const url = `https://${domain}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,status,priority,assignee,issuetype,customfield_10020&maxResults=100`;
 
   try {
     const jiraRes = await fetch(url, {
