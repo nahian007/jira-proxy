@@ -42,34 +42,63 @@ jobs:
           issues = data.get('issues', [])
           today = datetime.datetime.now().strftime('%Y-%m-%d')
 
+          type_icons = {
+              'Bug': '🐛', 'Sub-Bug': '🐞',
+              'Task': '✅', 'Story': '📖', 'Epic': '⚡'
+          }
+          priority_icons = {
+              'Highest': '🔴', 'High': '🟠',
+              'Medium': '🟡', 'Low': '🟢', 'Lowest': '🔵'
+          }
+          priority_order = ['Highest', 'High', 'Medium', 'Low', 'Lowest']
+
+          # Get sprint name
+          sprint_name = ''
+          for issue in issues:
+              sf = issue['fields'].get('customfield_10020', [])
+              if isinstance(sf, list):
+                  for s in sf:
+                      if s.get('state') == 'active':
+                          sprint_name = s.get('name', '')
+                          break
+              if sprint_name:
+                  break
+
           if not issues:
               message = f"📋 *Jira Sprint Report — SARY*\n📅 {today}\n\nNo open tickets! 🎉"
           else:
+              # Group by priority
+              grouped = {}
+              for issue in issues:
+                  p = issue['fields'].get('priority', {}).get('name', 'Medium')
+                  grouped.setdefault(p, []).append(issue)
+
+              title = f"Jira Sprint Report — SARY - {sprint_name}" if sprint_name else "Jira Sprint Report — SARY"
               lines = [
-                  "📋 *Jira Sprint Report — SARY*",
-                  f"📅 {today} | Open Tickets: {len(issues)}",
+                  f"📋 *{title}*",
+                  f"*Project:* SARY | *Open Tickets:* {len(issues)}",
                   "━━━━━━━━━━━━━━━━━━━"
               ]
-              for issue in issues:
-                  key = issue['key']
-                  fields = issue['fields']
-                  summary = fields.get('summary', '')
-                  priority = fields.get('priority', {}).get('name', 'Unknown')
-                  status = fields.get('status', {}).get('name', 'Unknown')
-                  assignee = fields.get('assignee') or {}
-                  assignee_name = assignee.get('displayName', 'Unassigned')
-                  issue_type = fields.get('issuetype', {}).get('name', 'Unknown')
-                  type_icons = {
-                      'Bug': '🐛',
-                      'Sub-Bug': '🔴',
-                      'Task': '✅',
-                      'Story': '📖',
-                      'Epic': '⚡'
-                  }
-                  icon = type_icons.get(issue_type, '📌')
-                  lines.append(f"{icon} *{key}* — {summary}")
-                  lines.append(f"   👤 {assignee_name} | 🎯 {priority} | 📌 {status}")
-              lines.append(f"\n_Report generated on {today} 10:00 AM BST_")
+
+              for priority in priority_order:
+                  if priority not in grouped:
+                      continue
+                  p_icon = priority_icons.get(priority, '⚪')
+                  lines.append(f"\n{p_icon} *{priority} Priority*")
+                  for issue in grouped[priority]:
+                      key = issue['key']
+                      fields = issue['fields']
+                      summary = fields.get('summary', '')
+                      status = fields.get('status', {}).get('name', 'Unknown')
+                      assignee = fields.get('assignee') or {}
+                      assignee_name = assignee.get('displayName', 'Unassigned')
+                      issue_type = fields.get('issuetype', {}).get('name', 'Unknown')
+                      icon = type_icons.get(issue_type, '📌')
+                      lines.append(f"{icon} *{key}* — {summary}")
+                      lines.append(f"   👤 {assignee_name} | 📌 {status}")
+
+              lines.append(f"\n━━━━━━━━━━━━━━━━━━━")
+              lines.append(f"_Report generated on {today} 10:00 AM BST_")
               message = "\n".join(lines)
 
           # Send to Google Chat
