@@ -1,0 +1,108 @@
+name: Daily Sary Sprint Report
+
+on:
+  schedule:
+    # 10:00 AM Bangladesh time (BST = UTC+6) = 04:00 UTC
+    # Runs Sun, Mon, Tue, Wed, Thu
+    - cron: '0 4 * * 0,1,2,3,4'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  send-report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Jira Sprint & Send to Google Chat
+        run: |
+          # Fetch open sprint tickets from Vercel proxy
+          RESPONSE=$(curl -s "https://jira-proxy-two.vercel.app/jira?domain=${{ secrets.JIRA_DOMAIN }}&email=${{ secrets.JIRA_EMAIL }}&token=${{ secrets.JIRA_TOKEN }}&projectKey=SARY")
+
+          # Parse and format the report using Python
+          python3 << 'EOF'
+          import json
+          import urllib.request
+          import os
+
+          response = os.environ.get('JIRA_RESPONSE', '')
+
+          # Read the response
+          with open('/tmp/jira_response.json', 'r') as f:
+              data = json.load(f)
+
+          issues = data.get('issues', [])
+
+          if not issues:
+              message = "📋 *Jira Sprint Report — SARY*\n\nNo open tickets found in the active sprint! 🎉"
+          else:
+              lines = [f"📋 *Jira Sprint Report — SARY*"]
+              lines.append(f"📅 $(date '+%Y-%m-%d') | Open Tickets: {len(issues)}")
+              lines.append("━━━━━━━━━━━━━━━━━━━")
+              for issue in issues:
+                  key = issue['key']
+                  fields = issue['fields']
+                  summary = fields.get('summary', '')
+                  priority = fields.get('priority', {}).get('name', 'Unknown')
+                  status = fields.get('status', {}).get('name', 'Unknown')
+                  assignee = fields.get('assignee', {})
+                  assignee_name = assignee.get('displayName', 'Unassigned') if assignee else 'Unassigned'
+                  issue_type = fields.get('issuetype', {}).get('name', 'Unknown')
+                  lines.append(f"[{issue_type}] *{key}* — {summary}")
+                  lines.append(f"   👤 {assignee_name} | 🎯 {priority} | 📌 {status}")
+              lines.append(f"\n_Report generated on $(date '+%Y-%m-%d %H:%M') BST_")
+              message = "\n".join(lines)
+
+          # Send to Google Chat
+          webhook_url = "${{ secrets.GCHAT_WEBHOOK }}"
+          payload = json.dumps({"text": message}).encode('utf-8')
+          req = urllib.request.Request(webhook_url, data=payload, headers={'Content-Type': 'application/json'})
+          urllib.request.urlopen(req)
+          print("✅ Report sent successfully!")
+          EOF
+
+      - name: Fetch and Send Report
+        env:
+          JIRA_DOMAIN: ${{ secrets.JIRA_DOMAIN }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+          GCHAT_WEBHOOK: ${{ secrets.GCHAT_WEBHOOK }}
+        run: |
+          # Fetch tickets
+          curl -s "https://jira-proxy-two.vercel.app/jira?domain=${JIRA_DOMAIN}&email=${JIRA_EMAIL}&token=${JIRA_TOKEN}&projectKey=SARY" > /tmp/jira_response.json
+
+          # Send report via Python
+          python3 << 'EOF'
+          import json, urllib.request, datetime, os
+
+          with open('/tmp/jira_response.json', 'r') as f:
+              data = json.load(f)
+
+          issues = data.get('issues', [])
+          today = datetime.datetime.now().strftime('%Y-%m-%d')
+
+          if not issues:
+              message = "📋 *Jira Sprint Report — SARY*\n📅 " + today + "\n\nNo open tickets! 🎉"
+          else:
+              lines = [
+                  "📋 *Jira Sprint Report — SARY*",
+                  f"📅 {today} | Open Tickets: {len(issues)}",
+                  "━━━━━━━━━━━━━━━━━━━"
+              ]
+              for issue in issues:
+                  key = issue['key']
+                  fields = issue['fields']
+                  summary = fields.get('summary', '')
+                  priority = fields.get('priority', {}).get('name', 'Unknown')
+                  status = fields.get('status', {}).get('name', 'Unknown')
+                  assignee = fields.get('assignee') or {}
+                  assignee_name = assignee.get('displayName', 'Unassigned')
+                  issue_type = fields.get('issuetype', {}).get('name', 'Unknown')
+                  lines.append(f"[{issue_type}] *{key}* — {summary}")
+                  lines.append(f"   👤 {assignee_name} | 🎯 {priority} | 📌 {status}")
+              lines.append(f"\n_Report generated on {today} 10:00 AM BST_")
+              message = "\n".join(lines)
+
+          webhook_url = os.environ['GCHAT_WEBHOOK']
+          payload = json.dumps({"text": message}).encode('utf-8')
+          req = urllib.request.Request(webhook_url, data=payload, headers={'Content-Type': 'application/json'})
+          urllib.request.urlopen(req)
+          print("Report sent!")
+          EOF
