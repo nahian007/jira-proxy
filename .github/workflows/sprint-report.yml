@@ -59,7 +59,15 @@ jobs:
                   assignee = fields.get('assignee') or {}
                   assignee_name = assignee.get('displayName', 'Unassigned')
                   issue_type = fields.get('issuetype', {}).get('name', 'Unknown')
-                  lines.append(f"[{issue_type}] *{key}* — {summary}")
+                  type_icons = {
+                      'Bug': '🐛',
+                      'Sub-Bug': '🔴',
+                      'Task': '✅',
+                      'Story': '📖',
+                      'Epic': '⚡'
+                  }
+                  icon = type_icons.get(issue_type, '📌')
+                  lines.append(f"{icon} *{key}* — {summary}")
                   lines.append(f"   👤 {assignee_name} | 🎯 {priority} | 📌 {status}")
               lines.append(f"\n_Report generated on {today} 10:00 AM BST_")
               message = "\n".join(lines)
